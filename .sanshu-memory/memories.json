@@ -1,0 +1,12 @@
+{
+  "version": "2.0",
+  "project_path": "D:\\Code\\wechat-robot-client",
+  "entries": [],
+  "last_dedup_at": "2026-10-02T04:44:46.535991100Z",
+  "config": {
+    "similarity_threshold": 0.7,
+    "dedup_on_startup": true,
+    "enable_dedup": true,
+    "upsert_threshold": 0.55
+  }
+}
