@@ -15,6 +15,7 @@ import (
 
 type MessageServiceIface interface {
 	SendTextMessage(toWxID, content string, at ...string) error
+	SendQuoteReply(toWxID, content string, quoted *model.Message) error
 	SendLongTextMessage(toWxID string, longText string) error
 	SendAppMessage(toWxID string, appMsgType int, appMsgXml string) error
 	MsgUploadImg(toWxID string, image io.Reader) (*model.Message, error)

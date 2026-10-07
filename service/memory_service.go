@@ -26,6 +26,7 @@ const (
 	friendMemoryIntervalSeconds  = 10 * 60
 	chatRoomMemoryMessageCount   = 100
 	memoryExtractionMessageLimit = 300
+	memoryExtractRetrySeconds    = 180
 )
 
 type MemoryService struct {
@@ -193,6 +194,10 @@ func (s *MemoryService) notifyFriendMessage(ctx context.Context, message *model.
 	if len(messages) > 0 {
 		if err := s.extractAndStore(ctx, messages, false, "", message.FromWxID); err != nil {
 			log.Printf("[Memory] 私聊记忆提取失败: %v", err)
+			// 失败后重新计时，避免下一条消息立刻再打一次模型。
+			state.WindowStartedAt = now
+			state.LastExtractedAt = now
+			state.UpdatedAt = now
 			_ = s.memoryRepo.SaveState(state)
 			return
 		}
@@ -258,6 +263,12 @@ func (s *MemoryService) notifyChatRoomMessage(ctx context.Context, message *mode
 		}
 		return
 	}
+	if state.LastExtractedAt > 0 && pendingCount > chatRoomMemoryMessageCount && now-state.LastExtractedAt < memoryExtractRetrySeconds {
+		if err := s.memoryRepo.SaveState(state); err != nil {
+			log.Printf("[Memory] 更新群聊提取状态失败: %v", err)
+		}
+		return
+	}
 
 	messages, err := s.msgRepo.GetChatRoomTextMessagesInIDRangeExcludeSenders(message.FromWxID, state.WindowStartMsgID, message.ID, blacklist, memoryExtractionMessageLimit)
 	if err != nil {
@@ -267,6 +278,8 @@ func (s *MemoryService) notifyChatRoomMessage(ctx context.Context, message *mode
 	if len(messages) > 0 {
 		if err := s.extractAndStore(ctx, messages, true, message.FromWxID, ""); err != nil {
 			log.Printf("[Memory] 群聊记忆提取失败: %v", err)
+			state.LastExtractedAt = now
+			state.UpdatedAt = now
 			_ = s.memoryRepo.SaveState(state)
 			return
 		}
@@ -452,7 +465,7 @@ func (s *MemoryService) extractMemoriesWithAI(ctx context.Context, settings *mod
 
 	userPrompt := "聊天窗口如下：\n" + transcript
 	client := newOpenAIClient(settings.ChatAPIKey, settings.ChatBaseURL)
-	msg, err := streamChatCompletionMessage(ctx, &client, openai.ChatCompletionNewParams{
+	req := openai.ChatCompletionNewParams{
 		Model: settings.ChatModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(systemPrompt),
@@ -468,13 +481,22 @@ func (s *MemoryService) extractMemoriesWithAI(ctx context.Context, settings *mod
 				},
 			},
 		},
+	}
+	// 豆包 seed 默认先写思考。思考不在正文里，空正文解析 JSON 会直接失败。
+	req.SetExtraFields(map[string]any{
+		"thinking": map[string]any{"type": "disabled"},
 	})
+	msg, err := streamChatCompletionMessage(ctx, &client, req)
 	if err != nil {
 		return nil, err
 	}
+	content := strings.TrimSpace(cleanJSONContent(msg.Content))
+	if content == "" {
+		return nil, fmt.Errorf("模型返回空内容")
+	}
 	var result memoryExtractionResult
-	if err := json.Unmarshal([]byte(cleanJSONContent(msg.Content)), &result); err != nil {
-		return nil, err
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		return nil, fmt.Errorf("解析记忆 JSON 失败: %w, content_len=%d", err, len(content))
 	}
 	return &result, nil
 }

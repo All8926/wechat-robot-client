@@ -100,6 +100,9 @@ func (m *CronManager) Start() {
 			// 每月群聊排行榜
 			chatRoomRankingMonthCron := NewChatRoomRankingMonthCron(m)
 			chatRoomRankingMonthCron.Register()
+			// 群聊冷场时主动接一句
+			proactiveCron := NewChatRoomProactiveCron(m)
+			proactiveCron.Register()
 		}
 	}
 }

@@ -11,6 +11,10 @@ type ChatRoomSettings struct {
 	ChatRoomID                string               `gorm:"column:chat_room_id;type:varchar(64);default:'';index:idx_chat_room_id;comment:群聊微信ID" json:"chat_room_id"`
 	ChatAIEnabled             *bool                `gorm:"column:chat_ai_enabled;default:false;comment:是否启用AI聊天功能" json:"chat_ai_enabled"`
 	ChatAITrigger             *string              `gorm:"column:chat_ai_trigger;type:varchar(20);default:'';comment:触发聊天AI的关键词" json:"chat_ai_trigger"`
+	ChatAINameAliases         datatypes.JSON       `gorm:"column:chat_ai_name_aliases;type:json;comment:点名触发别名，JSON字符串数组" json:"chat_ai_name_aliases"`
+	ChatAIProactiveEnabled    *bool                `gorm:"column:chat_ai_proactive_enabled;comment:是否允许AI主动插话，空则继承全局" json:"chat_ai_proactive_enabled"`
+	ChatAIProactiveCooldown   *int                 `gorm:"column:chat_ai_proactive_cooldown;comment:主动插话冷却秒数，空则继承全局" json:"chat_ai_proactive_cooldown"`
+	ChatAIProactiveMaxPerHour *int                 `gorm:"column:chat_ai_proactive_max_per_hour;comment:每群每小时主动插话上限，空则继承全局，全局也为空时默认8" json:"chat_ai_proactive_max_per_hour"`
 	ChatBaseURL               *string              `gorm:"column:chat_base_url;type:varchar(255);default:'';comment:聊天AI的基础URL地址" json:"chat_base_url"`
 	ChatAPIKey                *string              `gorm:"column:chat_api_key;type:varchar(255);default:'';comment:聊天AI的API密钥" json:"chat_api_key"`
 	ChatModel                 *string              `gorm:"column:chat_model;type:varchar(100);default:'';comment:聊天AI使用的模型名称" json:"chat_model"`
@@ -66,6 +70,14 @@ func (s *ChatRoomSettings) GetKnowledgeCategoryCodes() ([]string, error) {
 		return nil, err
 	}
 	return codes, nil
+}
+
+// GetChatAINameAliases 解析点名触发别名
+func (s *ChatRoomSettings) GetChatAINameAliases() ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	return DecodeJSONStringList(s.ChatAINameAliases)
 }
 
 // GetMemoryExtractionBlacklist 解析记忆提取黑名单群成员微信ID列表

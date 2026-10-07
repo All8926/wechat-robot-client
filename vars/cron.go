@@ -16,6 +16,7 @@ const (
 	NewsCron                  CommonCron = "news_cron"
 	MorningCron               CommonCron = "morning_cron"
 	FriendSyncCron            CommonCron = "friend_sync_cron"
+	ChatRoomProactiveCron     CommonCron = "chat_room_proactive_cron"
 	SessionSummarizeCron      CommonCron = "session_summarize_cron"
 )
 

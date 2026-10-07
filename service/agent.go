@@ -191,12 +191,9 @@ func (s *AgentService) ChatWithTools(
 			var err error
 
 			if s.skillsManager.IsSkillTool(tc.Function.Name) {
-				// skill 工具调用
+				// skill 工具调用。ended 只表示技能自己的消息已发出，不能据此结束本轮，否则用户收不到回复。
 				result, err = s.skillsManager.ExecuteToolCall(*robotCtx, tc)
-				immediately = result == vars.AIEnded || strings.HasSuffix(result, "\n"+vars.AIEnded)
-				if immediately {
-					result = vars.AIEnded
-				}
+				result = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(result), vars.AIEnded))
 				if tc.Function.Name == "execute_skill_script" {
 					log.Printf("工具[%s]执行结果:\n%s\n", tc.Function.Name, result)
 				}
@@ -237,6 +234,10 @@ func (s *AgentService) streamChatCompletion(
 	client *openai.Client,
 	req openai.ChatCompletionNewParams,
 ) (openai.ChatCompletionMessage, string, error) {
+	// 豆包 seed 默认会先输出 reasoning_content。关掉后直接生成回复，避免每条消息多等一轮思考。
+	req.SetExtraFields(map[string]any{
+		"thinking": map[string]any{"type": "disabled"},
+	})
 	stream := client.Chat.Completions.NewStreaming(s.ctx, req)
 	acc := openai.ChatCompletionAccumulator{}
 	var reasoningSB strings.Builder

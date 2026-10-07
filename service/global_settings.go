@@ -25,6 +25,9 @@ func (s *GlobalSettingsService) GetGlobalSettings() (*model.GlobalSettings, erro
 
 func (s *GlobalSettingsService) SaveGlobalSettings(data *model.GlobalSettings) error {
 	data.FriendSyncCron = "" // 这个不允许用户修改
+	if err := normalizeSettingsChatAINameAliases(&data.ChatAINameAliases); err != nil {
+		return err
+	}
 	err := s.gsRepo.Update(data)
 	if err != nil {
 		return err

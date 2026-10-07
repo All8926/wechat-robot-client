@@ -561,6 +561,8 @@ func (m *SkillsManager) executeScript(robotCtx robotctx.RobotContext, argsJSON s
 			env = append(env, ev.Key+"="+ev.Value)
 		}
 	}
+	// 容器访问 pypi.org 经常 SSL 中断，pip 会报找不到任何版本。默认走阿里云镜像并加重试。
+	env = appendSkillPipEnv(env)
 	cmd.Env = env
 
 	output, err := cmd.CombinedOutput()
@@ -578,6 +580,31 @@ func (m *SkillsManager) executeScript(robotCtx robotctx.RobotContext, argsJSON s
 
 	log.Printf("[Skills] Script completed: %s (%d bytes output)", absScript, len(output))
 	return result, nil
+}
+
+// appendSkillPipEnv 给技能脚本补上稳定的 pip 源。已有配置时不覆盖。
+func appendSkillPipEnv(env []string) []string {
+	present := make(map[string]struct{}, len(env))
+	for _, item := range env {
+		key, _, ok := strings.Cut(item, "=")
+		if ok {
+			present[key] = struct{}{}
+		}
+	}
+	defaults := []string{
+		"PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/",
+		"PIP_TRUSTED_HOST=mirrors.aliyun.com",
+		"PIP_RETRIES=10",
+		"PIP_DEFAULT_TIMEOUT=60",
+	}
+	for _, item := range defaults {
+		key, _, _ := strings.Cut(item, "=")
+		if _, ok := present[key]; ok {
+			continue
+		}
+		env = append(env, item)
+	}
+	return env
 }
 
 // syncToDB 将所有内存中的 Skill 同步到数据库

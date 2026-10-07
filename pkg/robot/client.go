@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net"
 	"net/http"
@@ -449,14 +450,34 @@ func (c *Client) SendTextMessage(req SendTextMessageRequest) (newMessages SendTe
 		return
 	}
 	var result ClientResponse[SendTextMessageResponse]
-	_, err = c.client.R().
+	resp, err := c.client.R().
 		SetResult(&result).
 		SetBody(req).Post(fmt.Sprintf("%s%s", c.Domain.BasePath(), MsgSendTxt))
 	if err = result.CheckError(err); err != nil {
 		return
 	}
 	newMessages = result.Data
+	if !hasSentTextMessage(newMessages) {
+		body := ""
+		if resp != nil {
+			body = resp.String()
+			if len(body) > 500 {
+				body = body[:500]
+			}
+		}
+		log.Printf("[SendTxt] 未解析到已发送消息 success=%t code=%d message=%s at=%q body=%s",
+			result.Success, result.Code, result.Message, req.At, body)
+	}
 	return
+}
+
+func hasSentTextMessage(resp SendTextMessageResponse) bool {
+	for _, message := range resp.List {
+		if message.Ret == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Client) MsgSendGroupMassMsgText(req MsgSendGroupMassMsgTextRequest) (newMessages MsgSendGroupMassMsgTextResponse, err error) {

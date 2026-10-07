@@ -28,7 +28,7 @@ func NewAICallbackService(ctx context.Context) *AICallbackService {
 
 func (s *AICallbackService) SendTextMessage(msgService *MessageService, message *model.Message, msg string) {
 	if message.IsChatRoom {
-		err := msgService.SendTextMessage(message.FromWxID, msg, message.SenderWxID)
+		err := msgService.SendQuoteReply(message.FromWxID, msg, message)
 		if err != nil {
 			log.Println("发送消息失败: ", message.FromWxID, msg, err)
 			return

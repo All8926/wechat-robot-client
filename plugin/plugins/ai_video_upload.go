@@ -50,13 +50,11 @@ func (p *AIVideoUploadPlugin) GetOSSFileURL(ctx *plugin.MessageContext) (string,
 }
 
 func (p *AIVideoUploadPlugin) SendMessage(ctx *plugin.MessageContext, aiReplyText string) {
-	var err error
 	if ctx.Message.IsChatRoom {
-		err = ctx.MessageService.SendTextMessage(ctx.Message.FromWxID, aiReplyText, ctx.Message.SenderWxID)
-	} else {
-		err = ctx.MessageService.SendTextMessage(ctx.Message.FromWxID, aiReplyText)
+		sendChatRoomReply(ctx, aiReplyText)
+		return
 	}
-	if err != nil {
+	if err := ctx.MessageService.SendTextMessage(ctx.Message.FromWxID, aiReplyText); err != nil {
 		log.Printf("发送AI回复消息失败: %v", err)
 	}
 }

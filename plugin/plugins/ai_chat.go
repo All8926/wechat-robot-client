@@ -9,6 +9,7 @@ import (
 	"log"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/openai/openai-go/v3"
 
@@ -70,6 +71,109 @@ type structuredReplyPattern struct {
 }
 
 var thinkTagRegexp = regexp.MustCompile(`(?s)<think>.*?</think>|<thinking>.*?</thinking>`)
+var leakedUserTailRegexp = regexp.MustCompile(`\s*\[(?:User|Assistant):[^\]]*\]\s*$`)
+
+// stripLeakedReasoning 去掉思考标签、英文推理段，以及模型自己补上的对话记录头。
+func stripLeakedReasoning(text string) string {
+	text = strings.TrimSpace(thinkTagRegexp.ReplaceAllString(text, ""))
+	if text == "" {
+		return ""
+	}
+	if spoken := spokenChineseAfterReasoning(text); spoken != "" {
+		return spoken
+	}
+	lines := strings.Split(text, "\n")
+	kept := make([]string, 0, len(lines))
+	english := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || isReasoningMarker(line) {
+			continue
+		}
+		if predominantlyEnglish(line) {
+			english = append(english, line)
+			continue
+		}
+		kept = append(kept, line)
+	}
+	if len(kept) == 0 {
+		return strings.TrimSpace(strings.Join(english, "\n"))
+	}
+	return strings.TrimSpace(strings.Join(kept, "\n"))
+}
+
+func spokenChineseAfterReasoning(text string) string {
+	lower := strings.ToLower(text)
+	if !strings.Contains(lower, "[conversation history]") && !strings.Contains(lower, "the user said") && !strings.Contains(lower, "[user:") {
+		return ""
+	}
+	body := text
+	if index := strings.LastIndex(lower, "[user:"); index >= 0 {
+		body = text[:index]
+	}
+	body = leakedUserTailRegexp.ReplaceAllString(body, "")
+	runes := []rune(body)
+	start := -1
+	run := 0
+	best := -1
+	for i, r := range runes {
+		if unicode.Is(unicode.Han, r) {
+			if run == 0 {
+				start = i
+			}
+			run++
+			if run >= 8 {
+				best = start
+			}
+			continue
+		}
+		if isLatinLetter(r) {
+			run = 0
+			start = -1
+		}
+	}
+	if best < 0 || latinCount(runes[:best]) < 40 {
+		return ""
+	}
+	return strings.TrimSpace(leakedUserTailRegexp.ReplaceAllString(string(runes[best:]), ""))
+}
+
+func isReasoningMarker(line string) bool {
+	return strings.HasPrefix(line, "[Conversation History]") ||
+		strings.HasPrefix(line, "[User:") ||
+		strings.HasPrefix(line, "[Assistant:")
+}
+
+func predominantlyEnglish(line string) bool {
+	latin, han := latinAndHan(line)
+	return latin > 20 && latin > han*3
+}
+
+func latinCount(runes []rune) int {
+	count := 0
+	for _, r := range runes {
+		if isLatinLetter(r) {
+			count++
+		}
+	}
+	return count
+}
+
+func latinAndHan(text string) (latin int, han int) {
+	for _, r := range text {
+		switch {
+		case isLatinLetter(r):
+			latin++
+		case unicode.Is(unicode.Han, r):
+			han++
+		}
+	}
+	return latin, han
+}
+
+func isLatinLetter(r rune) bool {
+	return (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z')
+}
 
 type AIChatPlugin struct{}
 
@@ -169,10 +273,10 @@ func (p *AIChatPlugin) SendMessage(ctx *plugin.MessageContext, aiReplyText strin
 		return
 	}
 	if ctx.Message.IsChatRoom {
-		ctx.MessageService.SendTextMessage(ctx.Message.FromWxID, aiReplyText, ctx.Message.SenderWxID)
-	} else {
-		ctx.MessageService.SendTextMessage(ctx.Message.FromWxID, aiReplyText)
+		sendChatRoomReply(ctx, aiReplyText)
+		return
 	}
+	ctx.MessageService.SendTextMessage(ctx.Message.FromWxID, aiReplyText)
 }
 
 func (p *AIChatPlugin) setChatMessageTextContent(message *openai.ChatCompletionMessageParamUnion, text string) {
@@ -326,9 +430,8 @@ func (p *AIChatPlugin) Run(ctx *plugin.MessageContext) {
 	if aiReply.Content != "" {
 		aiReplyText = aiReply.Content
 	}
-	// aiReplyText 可能包含思维链，<think></think> 标签内的内容是 AI 的思考过程，不应该发送给用户
-	aiReplyText = thinkTagRegexp.ReplaceAllString(aiReplyText, "")
-	aiReplyText = strings.TrimSpace(aiReplyText)
+	// 思维链和英文推理不能发到群里
+	aiReplyText = stripLeakedReasoning(aiReplyText)
 
 	if aiReplyText == "" {
 		aiReplyText = "AI返回了空内容。"

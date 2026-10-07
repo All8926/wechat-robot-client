@@ -475,12 +475,13 @@ type SendAppResponse struct {
 	Type         int    `json:"type"`
 	ActionFlag   int    `json:"actionFlag"`
 	ToUserName   string `json:"toUserName"`
-	MsgId        int64  `json:"msgId"`
+	MsgId        int64  `json:"MsgId"`
 	ClientMsgId  string `json:"clientMsgId"`
-	CreateTime   int64  `json:"createTime"`
-	NewMsgId     int64  `json:"newMsgId"`
+	CreateTime   int64  `json:"CreateTime"`
+	NewMsgId     int64  `json:"NewMsgId"`
 	MsgSource    string `json:"msgSource"`
-	Content      string `json:"content"`
+	Content      string `json:"Content"`
+	BaseRet      int    `json:"-"`
 }
 
 type GetAppMsgExtRequest struct {

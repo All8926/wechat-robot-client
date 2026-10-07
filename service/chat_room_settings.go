@@ -13,6 +13,8 @@ import (
 	"wechat-robot-client/repository"
 	"wechat-robot-client/utils"
 	"wechat-robot-client/vars"
+
+	"gorm.io/datatypes"
 )
 
 type ChatRoomSettingsService struct {
@@ -175,7 +177,13 @@ func (s *ChatRoomSettingsService) logAITrigger(reason, triggerWord, messageConte
 	)
 }
 
-func (s *ChatRoomSettingsService) IsAITrigger() bool {
+var atAllRegexp = regexp.MustCompile(vars.AtAllRegexp)
+
+// triggerMessageContent 取出用于判断触发的文本。引用消息用标题，不看整段 XML。
+func (s *ChatRoomSettingsService) triggerMessageContent() string {
+	if s.Message == nil {
+		return ""
+	}
 	messageContent := s.Message.Content
 	if s.Message.AppMsgType == model.AppMsgTypequote {
 		var xmlMessage robot.XmlMessage
@@ -183,14 +191,22 @@ func (s *ChatRoomSettingsService) IsAITrigger() bool {
 			messageContent = xmlMessage.AppMsg.Title
 		}
 	}
-	if s.Message.IsAtMe {
-		// 是否是 @所有人
-		atAllRegex := regexp.MustCompile(vars.AtAllRegexp)
-		if atAllRegex.MatchString(messageContent) {
-			// 如果是 @所有人，则不处理
+	return messageContent
+}
+
+func (s *ChatRoomSettingsService) IsAITrigger() bool {
+	messageContent := s.triggerMessageContent()
+	if s.Message != nil && s.Message.IsAtMe {
+		// @所有人 不触发
+		if atAllRegexp.MatchString(messageContent) {
 			return false
 		}
 		s.logAITrigger("mentioned", "", messageContent)
+		return true
+	}
+	// 点名不走模型：微信昵称、群昵称或配置别名出现在正文里就回复
+	if s.IsAIChatEnabled() && s.matchesRobotName(messageContent) {
+		s.logAITrigger("name", "", messageContent)
 		return true
 	}
 	if s.chatRoomSettings == nil {
@@ -340,6 +356,9 @@ func (s *ChatRoomSettingsService) SaveChatRoomSettings(data *model.ChatRoomSetti
 	if err := s.normalizeMemoryExtractionBlacklist(data); err != nil {
 		return err
 	}
+	if err := normalizeSettingsChatAINameAliases(&data.ChatAINameAliases); err != nil {
+		return err
+	}
 	if data.ID == 0 {
 		return s.crsRepo.Create(data)
 	}
@@ -443,5 +462,35 @@ func (s *ChatRoomSettingsService) normalizeMemoryExtractionBlacklist(data *model
 	}
 	data.MemoryExtractionBlacklist = payload
 
+	return nil
+}
+
+// normalizeSettingsChatAINameAliases 整理点名别名。字段没传时不改，避免保存其它配置时把别名清掉。
+func normalizeSettingsChatAINameAliases(raw *datatypes.JSON) error {
+	if raw == nil || len(*raw) == 0 || string(*raw) == "null" {
+		return nil
+	}
+	names, err := model.DecodeJSONStringList(*raw)
+	if err != nil {
+		return fmt.Errorf("chat_ai_name_aliases 格式错误: %w", err)
+	}
+	normalized := normalizeStringList(names)
+	if len(normalized) > 20 {
+		normalized = normalized[:20]
+	}
+	for i, name := range normalized {
+		runes := []rune(name)
+		if len(runes) > 32 {
+			normalized[i] = string(runes[:32])
+		}
+	}
+	if normalized == nil {
+		normalized = []string{}
+	}
+	payload, err := json.Marshal(normalized)
+	if err != nil {
+		return fmt.Errorf("序列化 chat_ai_name_aliases 失败: %w", err)
+	}
+	*raw = payload
 	return nil
 }

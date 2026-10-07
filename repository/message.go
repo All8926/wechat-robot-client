@@ -359,22 +359,62 @@ func (m *Message) GetChatRoomTextMessagesByTimeRange(chatRoomID, selfWxID string
 	return messages, nil
 }
 
-// GetRecentChatRoomMessages 获取群聊最近N条文本消息（排除指定发送者，限最近15分钟），并JOIN群成员昵称
-func (m *Message) GetRecentChatRoomMessages(chatRoomID string, excludeWxIDs []string, limit int) ([]*model.Message, error) {
+// GetChatRoomTranscript 取当前消息及之前的群文本、引用，带发言人昵称，按时间从早到晚。
+func (m *Message) GetChatRoomTranscript(chatRoomID string, currentID, since int64, limit int) ([]*model.Message, error) {
 	var messages []*model.Message
-	fifteenMinutesAgo := time.Now().Add(-15 * time.Minute).Unix()
 	query := m.DB.WithContext(m.Ctx).Model(&model.Message{}).
 		Select("messages.*, IF(chat_room_members.remark != '' AND chat_room_members.remark IS NOT NULL, chat_room_members.remark, chat_room_members.nickname) AS sender_nickname").
 		Joins("LEFT JOIN chat_room_members ON chat_room_members.wechat_id = messages.sender_wxid AND chat_room_members.chat_room_id = messages.from_wxid").
 		Where("messages.from_wxid = ?", chatRoomID).
-		Where("messages.`type` = 1").
-		Where("messages.`is_ai_context` = 0").
+		Where("messages.created_at >= ?", since).
 		Where("messages.content != ''").
-		Where("messages.created_at >= ?", fifteenMinutesAgo)
-	if len(excludeWxIDs) > 0 {
-		query = query.Where("messages.sender_wxid NOT IN ?", excludeWxIDs)
+		Where("messages.type = ? OR (messages.type = ? AND messages.app_msg_type = ?)", model.MsgTypeText, model.MsgTypeApp, model.AppMsgTypequote)
+	if currentID > 0 {
+		query = query.Where("messages.id <= ?", currentID)
 	}
 	err := query.Order("messages.id DESC").Limit(limit).Find(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+	return messages, nil
+}
+
+// ListChatRoomLatestTexts 取每个群在 since 之后的最后一条文本消息。
+func (m *Message) ListChatRoomLatestTexts(since int64) ([]*model.Message, error) {
+	var messages []*model.Message
+	err := m.DB.WithContext(m.Ctx).Raw(`
+		SELECT messages.* FROM messages
+		INNER JOIN (
+			SELECT MAX(id) AS id FROM messages
+			WHERE is_chat_room = 1 AND type = 1 AND content != '' AND created_at >= ?
+			GROUP BY from_wxid
+		) latest ON messages.id = latest.id
+	`, since).Scan(&messages).Error
+	if err != nil {
+		return nil, err
+	}
+	return messages, nil
+}
+
+// GetLatestChatRoomTextMessages 获取群里最近的文本消息，含机器人自己发的，供主动插话判断上下文。
+func (m *Message) GetLatestChatRoomTextMessages(chatRoomID string, since int64, limit int) ([]*model.Message, error) {
+	if limit <= 0 {
+		limit = 8
+	}
+	var messages []*model.Message
+	err := m.DB.WithContext(m.Ctx).Model(&model.Message{}).
+		Select("messages.*, IF(chat_room_members.remark != '' AND chat_room_members.remark IS NOT NULL, chat_room_members.remark, chat_room_members.nickname) AS sender_nickname").
+		Joins("LEFT JOIN chat_room_members ON chat_room_members.wechat_id = messages.sender_wxid AND chat_room_members.chat_room_id = messages.from_wxid").
+		Where("messages.from_wxid = ?", chatRoomID).
+		Where("messages.`type` = 1").
+		Where("messages.content != ''").
+		Where("messages.created_at >= ?", since).
+		Order("messages.id DESC").
+		Limit(limit).
+		Find(&messages).Error
 	if err != nil {
 		return nil, err
 	}

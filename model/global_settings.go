@@ -39,6 +39,10 @@ type GlobalSettings struct {
 	ID                        int64               `gorm:"column:id;primaryKey;autoIncrement;comment:公共配置表主键ID" json:"id"`
 	ChatAIEnabled             *bool               `gorm:"column:chat_ai_enabled;default:false;comment:是否启用AI聊天功能" json:"chat_ai_enabled"`
 	ChatAITrigger             *string             `gorm:"column:chat_ai_trigger;type:varchar(20);default:'';comment:触发聊天AI的关键词" json:"chat_ai_trigger"`
+	ChatAINameAliases         datatypes.JSON      `gorm:"column:chat_ai_name_aliases;type:json;comment:点名触发别名，JSON字符串数组" json:"chat_ai_name_aliases"`
+	ChatAIProactiveEnabled    *bool               `gorm:"column:chat_ai_proactive_enabled;comment:是否允许AI主动插话" json:"chat_ai_proactive_enabled"`
+	ChatAIProactiveCooldown   *int                `gorm:"column:chat_ai_proactive_cooldown;comment:主动插话冷却秒数" json:"chat_ai_proactive_cooldown"`
+	ChatAIProactiveMaxPerHour *int                `gorm:"column:chat_ai_proactive_max_per_hour;comment:每群每小时主动插话上限，空则默认8" json:"chat_ai_proactive_max_per_hour"`
 	ChatBaseURL               string              `gorm:"column:chat_base_url;type:varchar(255);default:'';comment:聊天AI的基础URL地址" json:"chat_base_url"`
 	ChatAPIKey                string              `gorm:"column:chat_api_key;type:varchar(255);default:'';comment:聊天AI的API密钥" json:"chat_api_key"`
 	ChatModel                 string              `gorm:"column:chat_model;type:varchar(100);default:'';comment:聊天AI使用的模型名称" json:"chat_model"`
@@ -89,4 +93,12 @@ type GlobalSettings struct {
 // TableName 设置表名
 func (GlobalSettings) TableName() string {
 	return "global_settings"
+}
+
+// GetChatAINameAliases 解析点名触发别名
+func (s *GlobalSettings) GetChatAINameAliases() ([]string, error) {
+	if s == nil {
+		return nil, nil
+	}
+	return DecodeJSONStringList(s.ChatAINameAliases)
 }

@@ -1,13 +1,18 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/openai/openai-go/v3"
@@ -23,9 +28,12 @@ const (
 
 // EmbeddingService 向量化服务
 type EmbeddingService struct {
-	client    *openai.Client
-	model     openai.EmbeddingModel
-	dimension int
+	client     *openai.Client
+	baseURL    string
+	apiKey     string
+	model      openai.EmbeddingModel
+	dimension  int
+	httpClient *http.Client
 }
 
 // NewEmbeddingService 创建向量化服务
@@ -39,16 +47,36 @@ func NewEmbeddingService(baseURL, apiKey, model string, dimension int) *Embeddin
 	}
 	client := newOpenAIClient(apiKey, baseURL)
 	return &EmbeddingService{
-		client:    &client,
-		model:     embModel,
-		dimension: dimension,
+		client:     &client,
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		apiKey:     apiKey,
+		model:      embModel,
+		dimension:  dimension,
+		httpClient: &http.Client{Timeout: 60 * time.Second},
 	}
+}
+
+// 方舟现行文本向量走 Doubao-embedding-vision 的多模态接口，旧的 /embeddings 文本模型已下线。
+func (s *EmbeddingService) useArkMultimodal() bool {
+	return strings.Contains(strings.ToLower(s.baseURL), "volces.com")
 }
 
 // Embed 将单条文本转为向量
 func (s *EmbeddingService) Embed(ctx context.Context, text string) ([]float32, error) {
 	if cached, err := s.getFromCache(ctx, text); err == nil && cached != nil {
 		return cached, nil
+	}
+
+	if s.useArkMultimodal() {
+		vectors, err := s.embedArkTexts(ctx, []string{text})
+		if err != nil {
+			return nil, err
+		}
+		if len(vectors) == 0 || len(vectors[0]) == 0 {
+			return nil, fmt.Errorf("empty embedding response")
+		}
+		s.setCache(ctx, text, vectors[0])
+		return vectors[0], nil
 	}
 
 	start := time.Now()
@@ -83,6 +111,18 @@ func (s *EmbeddingService) EmbedBatch(ctx context.Context, texts []string) ([][]
 	if len(texts) == 0 {
 		return nil, nil
 	}
+	if s.useArkMultimodal() {
+		// 多模态接口一次输入会合成一条向量，批量时逐条请求。
+		results := make([][]float32, 0, len(texts))
+		for _, text := range texts {
+			vector, err := s.Embed(ctx, text)
+			if err != nil {
+				return nil, fmt.Errorf("batch embedding failed: %w", err)
+			}
+			results = append(results, vector)
+		}
+		return results, nil
+	}
 
 	resp, err := s.client.Embeddings.New(ctx, openai.EmbeddingNewParams{
 		Input: openai.EmbeddingNewParamsInputUnion{
@@ -104,6 +144,79 @@ func (s *EmbeddingService) EmbedBatch(ctx context.Context, texts []string) ([][]
 		results[index] = float64SliceToFloat32(data.Embedding)
 	}
 	return results, nil
+}
+
+type arkTextInput struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+}
+
+type arkMultimodalRequest struct {
+	Model      string         `json:"model"`
+	Input      []arkTextInput `json:"input"`
+	Dimensions int            `json:"dimensions,omitempty"`
+}
+
+type arkEmbeddingObject struct {
+	Embedding []float64 `json:"embedding"`
+}
+
+func (s *EmbeddingService) embedArkTexts(ctx context.Context, texts []string) ([][]float32, error) {
+	inputs := make([]arkTextInput, 0, len(texts))
+	for _, text := range texts {
+		inputs = append(inputs, arkTextInput{Type: "text", Text: text})
+	}
+	payload, err := json.Marshal(arkMultimodalRequest{
+		Model:      string(s.model),
+		Input:      inputs,
+		Dimensions: s.dimension,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("embedding failed: %w", err)
+	}
+
+	start := time.Now()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.baseURL+"/embeddings/multimodal", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("embedding failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if s.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	}
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("embedding failed: %w", err)
+	}
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("embedding failed: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("embedding failed: POST %q: %d %s", req.URL.String(), resp.StatusCode, string(respBody))
+	}
+	log.Printf("[Embed] embed 接口调用耗时: %v", time.Since(start))
+
+	var envelope struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &envelope); err != nil {
+		return nil, fmt.Errorf("embedding failed: %w", err)
+	}
+	var many []arkEmbeddingObject
+	if err := json.Unmarshal(envelope.Data, &many); err == nil && len(many) > 0 && len(many[0].Embedding) > 0 {
+		results := make([][]float32, len(many))
+		for i, item := range many {
+			results[i] = float64SliceToFloat32(item.Embedding)
+		}
+		return results, nil
+	}
+	var one arkEmbeddingObject
+	if err := json.Unmarshal(envelope.Data, &one); err != nil || len(one.Embedding) == 0 {
+		return nil, fmt.Errorf("empty embedding response")
+	}
+	return [][]float32{float64SliceToFloat32(one.Embedding)}, nil
 }
 
 func float64SliceToFloat32(data []float64) []float32 {

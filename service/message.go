@@ -750,7 +750,10 @@ func (s *MessageService) SendTextMessage(toWxID, content string, at ...string) e
 		for index, wxid := range at {
 			var targetNickname string
 
-			if strings.HasSuffix(toWxID, "@chatroom") {
+			// notify@all 是艾特全体的协议值，不在群成员表里。
+			if wxid == "notify@all" {
+				targetNickname = "所有人"
+			} else if strings.HasSuffix(toWxID, "@chatroom") {
 				// 群聊消息，昵称优先取群备注，备注取不到或者取失败了，再去取联系人的昵称
 				chatRoomMember, err := s.crmRepo.GetChatRoomMember(toWxID, wxid)
 				if err != nil || chatRoomMember == nil {
@@ -796,35 +799,43 @@ func (s *MessageService) SendTextMessage(toWxID, content string, at ...string) e
 		return err
 	}
 
-	// 通过机器人发送的消息，消息同步接口获取不到，所以这里需要手动入库
+	// 通过机器人发送的消息，消息同步接口获取不到，所以这里需要手动入库。
+	// 带了艾特却没有成功消息时，不能当成发送成功。
+	sent := 0
 	if len(newMessages.List) > 0 {
 		for _, message := range newMessages.List {
-			if message.Ret == 0 {
-				m := model.Message{
-					MsgId:              message.NewMsgId,
-					ClientMsgId:        message.ClientMsgid,
-					Type:               model.MsgTypeText,
-					Content:            content,
-					DisplayFullContent: "",
-					MessageSource:      "",
-					FromWxID:           toWxID,
-					ToWxID:             vars.RobotRuntime.WxID,
-					SenderWxID:         vars.RobotRuntime.WxID,
-					IsChatRoom:         strings.HasSuffix(toWxID, "@chatroom"),
-					CreatedAt:          message.Createtime,
-					UpdatedAt:          time.Now().Unix(),
-				}
-				if m.IsChatRoom && len(at) > 0 {
-					m.ReplyWxID = at[0]
-				}
-				err = s.msgRepo.Create(&m)
-				if err != nil {
-					log.Printf("入库消息失败: %v", err)
-				}
-				// 插入一条联系人记录，获取联系人列表接口获取不到未保存到通讯录的群聊
-				NewContactService(s.ctx).InsertOrUpdateContactActiveTime(m.FromWxID)
+			if message.Ret != 0 {
+				log.Printf("[SendTxt] 消息未发送成功 ret=%d", message.Ret)
+				continue
 			}
+			sent++
+			m := model.Message{
+				MsgId:              message.NewMsgId,
+				ClientMsgId:        message.ClientMsgid,
+				Type:               model.MsgTypeText,
+				Content:            content,
+				DisplayFullContent: "",
+				MessageSource:      "",
+				FromWxID:           toWxID,
+				ToWxID:             vars.RobotRuntime.WxID,
+				SenderWxID:         vars.RobotRuntime.WxID,
+				IsChatRoom:         strings.HasSuffix(toWxID, "@chatroom"),
+				CreatedAt:          message.Createtime,
+				UpdatedAt:          time.Now().Unix(),
+			}
+			if m.IsChatRoom && len(at) > 0 {
+				m.ReplyWxID = at[0]
+			}
+			err = s.msgRepo.Create(&m)
+			if err != nil {
+				log.Printf("入库消息失败: %v", err)
+			}
+			// 插入一条联系人记录，获取联系人列表接口获取不到未保存到通讯录的群聊
+			NewContactService(s.ctx).InsertOrUpdateContactActiveTime(m.FromWxID)
 		}
+	}
+	if len(at) > 0 && sent == 0 {
+		return fmt.Errorf("艾特消息未发送成功")
 	}
 
 	return nil
