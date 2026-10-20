@@ -54,6 +54,19 @@
         <p class="hint" id="thinkingHint"></p>
 
         <fieldset>
+          <legend>群聊上下文</legend>
+          <label>
+            最近几小时
+            <input id="contextHours" type="number" min="1" max="168" inputmode="numeric" placeholder="1 到 168，留空使用默认" />
+          </label>
+          <label>
+            最多几条
+            <input id="contextLimit" type="number" min="1" max="2000" inputmode="numeric" placeholder="1 到 2000，留空使用默认" />
+          </label>
+        </fieldset>
+        <p class="hint" id="contextHint"></p>
+
+        <fieldset>
           <legend>主动插话</legend>
           <label class="check" id="followRow" hidden>
             <input id="enabledFollow" type="checkbox" />

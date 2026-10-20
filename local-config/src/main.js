@@ -17,6 +17,9 @@ const aliasHint = document.querySelector("#aliasHint");
 const enabledHint = document.querySelector("#enabledHint");
 const cooldownHint = document.querySelector("#cooldownHint");
 const thinkingHint = document.querySelector("#thinkingHint");
+const contextHoursInput = document.querySelector("#contextHours");
+const contextLimitInput = document.querySelector("#contextLimit");
+const contextHint = document.querySelector("#contextHint");
 const statusNode = document.querySelector("#status");
 const saveButton = document.querySelector("#save");
 const reloadButton = document.querySelector("#reload");
@@ -62,6 +65,19 @@ function aliasesFromText(text) {
     .filter(Boolean);
 }
 
+function optionalInt(text, min, max, message) {
+  const value = text.trim();
+  if (value === "") {
+    return null;
+  }
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < min || number > max) {
+    setStatus(message, true);
+    return false;
+  }
+  return number;
+}
+
 function applyScope() {
   const isRoom = scope === "room";
   tabGlobal.classList.toggle("active", !isRoom);
@@ -77,6 +93,9 @@ function applyScope() {
   cooldownHint.textContent = isRoom
     ? "留空时用全局的秒数。全局也留空时用 180 秒。"
     : "留空时用 180 秒。可填 30 到 3600。";
+  contextHint.textContent = isRoom
+    ? "留空时用全局的小时数和条数。全局也留空时用最近 6 小时、最多 300 条。"
+    : "留空时用最近 6 小时、最多 300 条。只影响群聊回复时带上的流水，不影响记忆提取。";
 }
 
 function fillForm(settings) {
@@ -102,6 +121,8 @@ function fillForm(settings) {
   } else {
     thinkingHint.textContent = "当前已关闭。";
   }
+  contextHoursInput.value = settings?.chat_context_hours ?? "";
+  contextLimitInput.value = settings?.chat_context_message_limit ?? "";
   if (scope === "room" && enabledFollow.checked) {
     enabledHint.textContent = "这个群沿用全局。全局未填写时默认开启。";
   } else if (inherited) {
@@ -170,12 +191,24 @@ async function save(event) {
     setStatus("冷却需要是 30 到 3600 之间的整数", true);
     return;
   }
+  const contextHours = optionalInt(contextHoursInput.value, 1, 168, "上下文小时数需要是 1 到 168 之间的整数");
+  if (contextHours === false) {
+    return;
+  }
+  const contextLimit = optionalInt(contextLimitInput.value, 1, 2000, "上下文条数需要是 1 到 2000 之间的整数");
+  if (contextLimit === false) {
+    return;
+  }
   const payload = {
     chat_ai_name_aliases: aliasesFromText(aliasesInput.value),
     proactive_enabled_set: true,
     cooldown_set: true,
     chat_ai_proactive_cooldown: cooldown,
     thinking_set: true,
+    context_hours_set: true,
+    chat_context_hours: contextHours,
+    context_limit_set: true,
+    chat_context_message_limit: contextLimit,
   };
   if (scope === "room" && thinkingFollow.checked) {
     payload.chat_ai_thinking_enabled = null;

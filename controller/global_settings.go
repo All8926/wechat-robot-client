@@ -151,6 +151,10 @@ type runtimeConfigRequest struct {
 	CooldownSet      bool      `json:"cooldown_set"`
 	ThinkingEnabled  *bool     `json:"chat_ai_thinking_enabled"`
 	ThinkingSet      bool      `json:"thinking_set"`
+	ContextHours     *int      `json:"chat_context_hours"`
+	ContextHoursSet  bool      `json:"context_hours_set"`
+	ContextLimit     *int      `json:"chat_context_message_limit"`
+	ContextLimitSet  bool      `json:"context_limit_set"`
 }
 
 func (ct *GlobalSettings) SaveRuntimeConfig(c *gin.Context) {
@@ -162,9 +166,9 @@ func (ct *GlobalSettings) SaveRuntimeConfig(c *gin.Context) {
 	}
 	var err error
 	if req.ChatRoomID != "" {
-		err = service.NewChatRoomSettingsService(c).PatchRuntimeConfig(req.ChatRoomID, req.NameAliases, req.ProactiveEnabled, req.EnabledSet, req.Cooldown, req.CooldownSet, req.ThinkingEnabled, req.ThinkingSet)
+		err = service.NewChatRoomSettingsService(c).PatchRuntimeConfig(req.ChatRoomID, req.NameAliases, req.ProactiveEnabled, req.EnabledSet, req.Cooldown, req.CooldownSet, req.ThinkingEnabled, req.ThinkingSet, req.ContextHours, req.ContextHoursSet, req.ContextLimit, req.ContextLimitSet)
 	} else {
-		err = service.NewGlobalSettingsService(c).PatchRuntimeConfig(req.NameAliases, req.ProactiveEnabled, req.EnabledSet, req.Cooldown, req.CooldownSet, req.ThinkingEnabled, req.ThinkingSet)
+		err = service.NewGlobalSettingsService(c).PatchRuntimeConfig(req.NameAliases, req.ProactiveEnabled, req.EnabledSet, req.Cooldown, req.CooldownSet, req.ThinkingEnabled, req.ThinkingSet, req.ContextHours, req.ContextHoursSet, req.ContextLimit, req.ContextLimitSet)
 	}
 	if err != nil {
 		resp.ToErrorResponse(err)

@@ -366,7 +366,7 @@ func (s *ChatRoomSettingsService) SaveChatRoomSettings(data *model.ChatRoomSetti
 }
 
 // PatchRuntimeConfig 只更新这个群的点名别名和主动插话。空值写成 NULL，表示继承全局。
-func (s *ChatRoomSettingsService) PatchRuntimeConfig(chatRoomID string, aliases *[]string, enabled *bool, enabledSet bool, cooldown *int, cooldownSet bool, thinking *bool, thinkingSet bool) error {
+func (s *ChatRoomSettingsService) PatchRuntimeConfig(chatRoomID string, aliases *[]string, enabled *bool, enabledSet bool, cooldown *int, cooldownSet bool, thinking *bool, thinkingSet bool, contextHours *int, contextHoursSet bool, contextLimit *int, contextLimitSet bool) error {
 	chatRoomID = strings.TrimSpace(chatRoomID)
 	if chatRoomID == "" {
 		return fmt.Errorf("缺少群聊 ID")
@@ -401,6 +401,18 @@ func (s *ChatRoomSettingsService) PatchRuntimeConfig(chatRoomID string, aliases 
 	}
 	if thinkingSet {
 		updates["chat_ai_thinking_enabled"] = nullableBool(thinking)
+	}
+	if contextHoursSet {
+		if contextHours != nil && (*contextHours < 1 || *contextHours > 168) {
+			return fmt.Errorf("群聊上下文小时数需要在 1 到 168 之间")
+		}
+		updates["chat_context_hours"] = nullableInt(contextHours)
+	}
+	if contextLimitSet {
+		if contextLimit != nil && (*contextLimit < 1 || *contextLimit > 2000) {
+			return fmt.Errorf("群聊上下文条数需要在 1 到 2000 之间")
+		}
+		updates["chat_context_message_limit"] = nullableInt(contextLimit)
 	}
 	if current == nil {
 		row := &model.ChatRoomSettings{ChatRoomID: chatRoomID}

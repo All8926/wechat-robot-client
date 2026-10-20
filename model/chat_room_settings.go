@@ -16,6 +16,8 @@ type ChatRoomSettings struct {
 	ChatAIProactiveCooldown   *int                 `gorm:"column:chat_ai_proactive_cooldown;comment:主动插话冷却秒数，空则继承全局" json:"chat_ai_proactive_cooldown"`
 	ChatAIProactiveMaxPerHour *int                 `gorm:"column:chat_ai_proactive_max_per_hour;comment:每群每小时主动插话上限，空则继承全局，全局也为空时默认8" json:"chat_ai_proactive_max_per_hour"`
 	ChatAIThinkingEnabled     *bool                `gorm:"column:chat_ai_thinking_enabled;comment:是否开启模型思考通道，空则继承全局" json:"chat_ai_thinking_enabled"`
+	ChatContextHours          *int                 `gorm:"column:chat_context_hours;comment:群聊回复上下文小时数，空则继承全局" json:"chat_context_hours"`
+	ChatContextMessageLimit   *int                 `gorm:"column:chat_context_message_limit;comment:群聊回复上下文最多条数，空则继承全局" json:"chat_context_message_limit"`
 	ChatBaseURL               *string              `gorm:"column:chat_base_url;type:varchar(255);default:'';comment:聊天AI的基础URL地址" json:"chat_base_url"`
 	ChatAPIKey                *string              `gorm:"column:chat_api_key;type:varchar(255);default:'';comment:聊天AI的API密钥" json:"chat_api_key"`
 	ChatModel                 *string              `gorm:"column:chat_model;type:varchar(100);default:'';comment:聊天AI使用的模型名称" json:"chat_model"`

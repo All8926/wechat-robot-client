@@ -153,8 +153,8 @@ func (s *AIChatService) buildGroupChatContext(chatRoomID string, currentID int64
 		return ""
 	}
 	msgRepo := repository.NewMessageRepo(s.ctx, vars.DB)
-	// 热闹的群半小时就能过百条，窗口太短会把点名和家谱挤出上下文。
-	recentMsgs, err := msgRepo.GetChatRoomTranscript(chatRoomID, currentID, time.Now().Add(-6*time.Hour).Unix(), 300)
+	since, limit := s.groupContextWindow(time.Now())
+	recentMsgs, err := msgRepo.GetChatRoomTranscript(chatRoomID, currentID, since, limit)
 	if err != nil {
 		log.Printf("[GroupContext] 获取群聊流水失败: %v", err)
 		return ""
@@ -183,6 +183,43 @@ func (s *AIChatService) buildGroupChatContext(chatRoomID string, currentID int64
 		return ""
 	}
 	return sb.String()
+}
+
+const (
+	defaultGroupContextHours = 6
+	defaultGroupContextLimit = 300
+)
+
+// groupContextWindow 群配置优先，未设置时用全局。两边都没写则用 6 小时、300 条。
+func (s *AIChatService) groupContextWindow(now time.Time) (int64, int) {
+	hours := defaultGroupContextHours
+	limit := defaultGroupContextLimit
+	if room, ok := s.config.(*ChatRoomSettingsService); ok {
+		hours, limit = room.groupContextHoursAndLimit()
+	}
+	return now.Add(-time.Duration(hours) * time.Hour).Unix(), limit
+}
+
+func (s *ChatRoomSettingsService) groupContextHoursAndLimit() (int, int) {
+	hours := defaultGroupContextHours
+	limit := defaultGroupContextLimit
+	if s.globalSettings != nil {
+		if s.globalSettings.ChatContextHours != nil && *s.globalSettings.ChatContextHours > 0 {
+			hours = *s.globalSettings.ChatContextHours
+		}
+		if s.globalSettings.ChatContextMessageLimit != nil && *s.globalSettings.ChatContextMessageLimit > 0 {
+			limit = *s.globalSettings.ChatContextMessageLimit
+		}
+	}
+	if s.chatRoomSettings != nil {
+		if s.chatRoomSettings.ChatContextHours != nil && *s.chatRoomSettings.ChatContextHours > 0 {
+			hours = *s.chatRoomSettings.ChatContextHours
+		}
+		if s.chatRoomSettings.ChatContextMessageLimit != nil && *s.chatRoomSettings.ChatContextMessageLimit > 0 {
+			limit = *s.chatRoomSettings.ChatContextMessageLimit
+		}
+	}
+	return hours, limit
 }
 
 func (s *AIChatService) robotSpeakerLabel() string {
