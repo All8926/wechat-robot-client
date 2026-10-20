@@ -47,8 +47,25 @@ var roomProactiveLimiter = &proactiveLimiter{
 	rooms: map[string]*proactiveRoomState{},
 }
 
+// AIThinkingEnabled 群配置优先，未设置时继承全局。两边都没写则关闭思考。
+func (s *ChatRoomSettingsService) AIThinkingEnabled() bool {
+	if s.chatRoomSettings != nil && s.chatRoomSettings.ChatAIThinkingEnabled != nil {
+		return *s.chatRoomSettings.ChatAIThinkingEnabled
+	}
+	if s.globalSettings != nil && s.globalSettings.ChatAIThinkingEnabled != nil {
+		return *s.globalSettings.ChatAIThinkingEnabled
+	}
+	return false
+}
+
 func (s *ChatRoomSettingsService) IsAIProactiveEnabled() bool {
-	// 管理后台页面没有这个开关，主动插话固定开启。群 AI 本身没开时，调用方会先拦住。
+	// 群配置优先，未设置时继承全局。两边都没写则保持开启。
+	if s.chatRoomSettings != nil && s.chatRoomSettings.ChatAIProactiveEnabled != nil {
+		return *s.chatRoomSettings.ChatAIProactiveEnabled
+	}
+	if s.globalSettings != nil && s.globalSettings.ChatAIProactiveEnabled != nil {
+		return *s.globalSettings.ChatAIProactiveEnabled
+	}
 	return true
 }
 
@@ -146,11 +163,11 @@ func (s *ChatRoomSettingsService) judgeProactive(ctx context.Context, content st
 	defer cancel()
 
 	names := s.robotDisplayNames()
-	nameText := "这个群里的机器人"
+	nameText := "按大家对你的称呼来回应"
 	if len(names) > 0 {
-		nameText = strings.Join(names, "、")
+		nameText = "大家可能叫你：" + strings.Join(names, "、")
 	}
-	prompt := fmt.Sprintf(`你是微信群成员，名字叫小机，大家也可能叫你：%s。
+	prompt := fmt.Sprintf(`你是微信群成员。%s。
 看最近群聊，决定要不要主动插一句。
 %s
 要说话时只输出一句口语，不超过%d个字，不要解释，不要列点，不要提及工具。`, nameText, proactiveSpeakRule(reason), proactiveReplyMaxRunes)

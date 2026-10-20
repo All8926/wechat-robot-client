@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>机器人运行配置</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>机器人运行配置</h1>
+          <p>只改管理后台里没有的项。保存后下一条消息生效，不用重启容器。</p>
+        </div>
+        <label class="base">
+          客户端地址
+          <input id="baseUrl" value="http://127.0.0.1:9001" spellcheck="false" />
+        </label>
+      </header>
+
+      <nav aria-label="配置范围">
+        <button id="tabGlobal" class="active" type="button" aria-pressed="true">全局</button>
+        <button id="tabRoom" type="button" aria-pressed="false">单个群</button>
+      </nav>
+
+      <form id="form">
+        <section id="roomPicker" hidden>
+          <div class="picker">
+            <label>
+              群
+              <select id="roomSelect"></select>
+            </label>
+            <button id="reloadRooms" type="button">刷新群列表</button>
+          </div>
+        </section>
+
+        <label>
+          点名别名
+          <textarea id="aliases" rows="4" placeholder="一行一个，留空表示不额外增加"></textarea>
+        </label>
+        <p class="hint" id="aliasHint"></p>
+
+        <fieldset>
+          <legend>模型思考</legend>
+          <label class="check" id="thinkingFollowRow" hidden>
+            <input id="thinkingFollow" type="checkbox" />
+            <span>跟随全局</span>
+          </label>
+          <label class="check">
+            <input id="thinking" type="checkbox" />
+            <span>开启思考</span>
+          </label>
+        </fieldset>
+        <p class="hint" id="thinkingHint"></p>
+
+        <fieldset>
+          <legend>主动插话</legend>
+          <label class="check" id="followRow" hidden>
+            <input id="enabledFollow" type="checkbox" />
+            <span>跟随全局</span>
+          </label>
+          <label class="check">
+            <input id="enabled" type="checkbox" />
+            <span>允许主动插话</span>
+          </label>
+        </fieldset>
+        <p class="hint" id="enabledHint"></p>
+
+        <label>
+          主动插话冷却（秒）
+          <input id="cooldown" type="number" min="30" max="3600" inputmode="numeric" placeholder="30 到 3600，留空使用默认" />
+        </label>
+        <p class="hint" id="cooldownHint"></p>
+
+        <div class="actions">
+          <p id="status" role="status"></p>
+          <div class="buttons">
+            <button id="reload" type="button">重新读取</button>
+            <button id="save" type="submit">保存</button>
+          </div>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

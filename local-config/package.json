@@ -1,0 +1,11 @@
+{
+  "name": "wechat-robot-local-config",
+  "private": true,
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 18473",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}

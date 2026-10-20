@@ -141,3 +141,34 @@ func (ct *GlobalSettings) SaveGlobalSettings(c *gin.Context) {
 	}
 	resp.ToResponse(nil)
 }
+
+type runtimeConfigRequest struct {
+	ChatRoomID       string    `json:"chat_room_id"`
+	NameAliases      *[]string `json:"chat_ai_name_aliases"`
+	ProactiveEnabled *bool     `json:"chat_ai_proactive_enabled"`
+	EnabledSet       bool      `json:"proactive_enabled_set"`
+	Cooldown         *int      `json:"chat_ai_proactive_cooldown"`
+	CooldownSet      bool      `json:"cooldown_set"`
+	ThinkingEnabled  *bool     `json:"chat_ai_thinking_enabled"`
+	ThinkingSet      bool      `json:"thinking_set"`
+}
+
+func (ct *GlobalSettings) SaveRuntimeConfig(c *gin.Context) {
+	var req runtimeConfigRequest
+	resp := appx.NewResponse(c)
+	if ok, err := appx.BindAndValid(c, &req); !ok || err != nil {
+		resp.ToErrorResponse(errors.New("参数错误"))
+		return
+	}
+	var err error
+	if req.ChatRoomID != "" {
+		err = service.NewChatRoomSettingsService(c).PatchRuntimeConfig(req.ChatRoomID, req.NameAliases, req.ProactiveEnabled, req.EnabledSet, req.Cooldown, req.CooldownSet, req.ThinkingEnabled, req.ThinkingSet)
+	} else {
+		err = service.NewGlobalSettingsService(c).PatchRuntimeConfig(req.NameAliases, req.ProactiveEnabled, req.EnabledSet, req.Cooldown, req.CooldownSet, req.ThinkingEnabled, req.ThinkingSet)
+	}
+	if err != nil {
+		resp.ToErrorResponse(err)
+		return
+	}
+	resp.ToResponse(nil)
+}

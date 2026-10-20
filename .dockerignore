@@ -12,3 +12,4 @@ ipad.swagger.yml
 .DS_Store
 __debugger_docker
 .env
+local-config

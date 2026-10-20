@@ -61,6 +61,7 @@ func initController() {
 
 func RegisterRouter(r *gin.Engine) error {
 	r.Use(middleware.ErrorRecover)
+	r.Use(middleware.LocalConfigCORS)
 
 	initController()
 
@@ -212,6 +213,7 @@ func RegisterRouter(r *gin.Engine) error {
 
 	api.GET("/robot/global-settings", globalSettingsCtl.GetGlobalSettings)
 	api.POST("/robot/global-settings", globalSettingsCtl.SaveGlobalSettings)
+	api.POST("/robot/runtime-config", globalSettingsCtl.SaveRuntimeConfig)
 	api.GET("/robot/friend-settings", friendSettingsCtl.GetFriendSettings)
 	api.POST("/robot/friend-settings", friendSettingsCtl.SaveFriendSettings)
 	api.GET("/robot/chat-room-settings", chatRoomSettingsCtl.GetChatRoomSettings)

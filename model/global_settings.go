@@ -43,6 +43,7 @@ type GlobalSettings struct {
 	ChatAIProactiveEnabled    *bool               `gorm:"column:chat_ai_proactive_enabled;comment:是否允许AI主动插话" json:"chat_ai_proactive_enabled"`
 	ChatAIProactiveCooldown   *int                `gorm:"column:chat_ai_proactive_cooldown;comment:主动插话冷却秒数" json:"chat_ai_proactive_cooldown"`
 	ChatAIProactiveMaxPerHour *int                `gorm:"column:chat_ai_proactive_max_per_hour;comment:每群每小时主动插话上限，空则默认8" json:"chat_ai_proactive_max_per_hour"`
+	ChatAIThinkingEnabled     *bool               `gorm:"column:chat_ai_thinking_enabled;comment:是否开启模型思考通道，空则关闭" json:"chat_ai_thinking_enabled"`
 	ChatBaseURL               string              `gorm:"column:chat_base_url;type:varchar(255);default:'';comment:聊天AI的基础URL地址" json:"chat_base_url"`
 	ChatAPIKey                string              `gorm:"column:chat_api_key;type:varchar(255);default:'';comment:聊天AI的API密钥" json:"chat_api_key"`
 	ChatModel                 string              `gorm:"column:chat_model;type:varchar(100);default:'';comment:聊天AI使用的模型名称" json:"chat_model"`

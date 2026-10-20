@@ -44,6 +44,15 @@ func (s *ChatRoomSettingsService) matchesRobotName(content string) bool {
 	return false
 }
 
+// primaryRobotName 取配置别名或微信昵称里的第一个，用来在上下文里称呼自己。
+func (s *ChatRoomSettingsService) primaryRobotName() string {
+	names := s.robotDisplayNames()
+	if len(names) == 0 {
+		return ""
+	}
+	return names[0]
+}
+
 func (s *ChatRoomSettingsService) robotDisplayNames() []string {
 	names := s.collectRobotNames()
 	result := make([]string, 0, len(names))
@@ -71,7 +80,7 @@ func (s *ChatRoomSettingsService) collectRobotNames() []robotName {
 		names = append(names, robotName{value: value, explicit: explicit})
 	}
 
-	for _, alias := range append([]string{"小机"}, s.chatAINameAliases()...) {
+	for _, alias := range s.chatAINameAliases() {
 		add(alias, true)
 	}
 	add(cachedRobotNickname(s.ctx), false)

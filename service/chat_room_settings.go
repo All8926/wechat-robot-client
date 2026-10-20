@@ -365,8 +365,74 @@ func (s *ChatRoomSettingsService) SaveChatRoomSettings(data *model.ChatRoomSetti
 	return s.crsRepo.Update(data)
 }
 
+// PatchRuntimeConfig 只更新这个群的点名别名和主动插话。空值写成 NULL，表示继承全局。
+func (s *ChatRoomSettingsService) PatchRuntimeConfig(chatRoomID string, aliases *[]string, enabled *bool, enabledSet bool, cooldown *int, cooldownSet bool, thinking *bool, thinkingSet bool) error {
+	chatRoomID = strings.TrimSpace(chatRoomID)
+	if chatRoomID == "" {
+		return fmt.Errorf("缺少群聊 ID")
+	}
+	current, err := s.crsRepo.GetChatRoomSettings(chatRoomID)
+	if err != nil {
+		return err
+	}
+	updates := map[string]any{}
+	if aliases != nil {
+		normalized := normalizeStringList(*aliases)
+		if len(normalized) > 20 {
+			normalized = normalized[:20]
+		}
+		if normalized == nil {
+			normalized = []string{}
+		}
+		payload, err := json.Marshal(normalized)
+		if err != nil {
+			return err
+		}
+		updates["chat_ai_name_aliases"] = datatypes.JSON(payload)
+	}
+	if enabledSet {
+		updates["chat_ai_proactive_enabled"] = nullableBool(enabled)
+	}
+	if cooldownSet {
+		if cooldown != nil && (*cooldown < 30 || *cooldown > 3600) {
+			return fmt.Errorf("主动插话冷却需要在 30 到 3600 秒之间")
+		}
+		updates["chat_ai_proactive_cooldown"] = nullableInt(cooldown)
+	}
+	if thinkingSet {
+		updates["chat_ai_thinking_enabled"] = nullableBool(thinking)
+	}
+	if current == nil {
+		row := &model.ChatRoomSettings{ChatRoomID: chatRoomID}
+		if err := s.crsRepo.Create(row); err != nil {
+			return err
+		}
+		current = row
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return s.crsRepo.DB.WithContext(s.ctx).Model(&model.ChatRoomSettings{}).Where("id = ?", current.ID).Updates(updates).Error
+}
+
 func normalizeKnowledgeCategoryCodes(codes []string) []string {
 	return normalizeStringList(codes)
+}
+
+// nullableBool 把空指针写成 SQL NULL，避免 GORM 把带类型的空指针跳过。
+func nullableBool(value *bool) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+// nullableInt 把空指针写成 SQL NULL，群配置留空时继承全局。
+func nullableInt(value *int) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
 
 func normalizeStringList(values []string) []string {

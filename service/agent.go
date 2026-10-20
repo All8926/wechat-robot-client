@@ -234,9 +234,9 @@ func (s *AgentService) streamChatCompletion(
 	client *openai.Client,
 	req openai.ChatCompletionNewParams,
 ) (openai.ChatCompletionMessage, string, error) {
-	// 豆包 seed 默认会先输出 reasoning_content。关掉后直接生成回复，避免每条消息多等一轮思考。
+	// 调用方可以指定 enabled 或 disabled。没指定时关闭，避免草稿写进正文。
 	req.SetExtraFields(map[string]any{
-		"thinking": map[string]any{"type": "disabled"},
+		"thinking": map[string]any{"type": configuredThinkingMode(req)},
 	})
 	stream := client.Chat.Completions.NewStreaming(s.ctx, req)
 	acc := openai.ChatCompletionAccumulator{}
@@ -267,4 +267,17 @@ func (s *AgentService) streamChatCompletion(
 	log.Printf("Stream finished with reason: %s, toolCalls: %d, content length: %d, reasoning length: %d",
 		acc.Choices[0].FinishReason, len(msg.ToolCalls), len(msg.Content), reasoningSB.Len())
 	return msg, reasoningSB.String(), nil
+}
+
+func configuredThinkingMode(req openai.ChatCompletionNewParams) string {
+	extra := req.ExtraFields()
+	thinking, ok := extra["thinking"].(map[string]any)
+	if !ok {
+		return "disabled"
+	}
+	mode, _ := thinking["type"].(string)
+	if mode == "enabled" {
+		return "enabled"
+	}
+	return "disabled"
 }

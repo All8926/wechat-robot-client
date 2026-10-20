@@ -79,12 +79,31 @@ func (s *AIChatService) Chat(robotCtx robotctx.RobotContext, aiMessages []openai
 		Model:    aiConfig.Model,
 		Messages: aiMessages,
 	}
+	// 思考走单独通道，正文才发给微信。未配置时保持关闭。
+	thinkingType := "disabled"
+	if s.chatThinkingEnabled() {
+		thinkingType = "enabled"
+	}
+	req.SetExtraFields(map[string]any{
+		"thinking": map[string]any{"type": thinkingType},
+	})
 
 	aiStart := time.Now()
 	reply, err := vars.Agent.ChatWithTools(&robotCtx, &client, req)
 	log.Printf("[AI] 接口调用耗时: %v", time.Since(aiStart))
 
 	return reply, err
+}
+
+func (s *AIChatService) chatThinkingEnabled() bool {
+	if room, ok := s.config.(*ChatRoomSettingsService); ok {
+		return room.AIThinkingEnabled()
+	}
+	globalSettings, err := NewGlobalSettingsService(s.ctx).GetGlobalSettings()
+	if err != nil || globalSettings == nil || globalSettings.ChatAIThinkingEnabled == nil {
+		return false
+	}
+	return *globalSettings.ChatAIThinkingEnabled
 }
 
 func (s *AIChatService) latestChatMessageText(messages []openai.ChatCompletionMessageParamUnion) string {
@@ -146,13 +165,14 @@ func (s *AIChatService) buildGroupChatContext(chatRoomID string, currentID int64
 	sb.WriteString("每条前面是说话的人。只回复标了「当前消息」的那一条。\n")
 	sb.WriteString("当前消息里 @ 到的人，就是对方点名的对象，不要换成旁边刚说过话的别人。\n")
 	wrote := false
+	robotLabel := s.robotSpeakerLabel()
 	for _, msg := range recentMsgs {
 		text := transcriptLine(msg)
 		if text == "" {
 			continue
 		}
 		wrote = true
-		speaker := transcriptSpeaker(msg)
+		speaker := transcriptSpeaker(msg, robotLabel)
 		if msg.ID == currentID {
 			fmt.Fprintf(&sb, "当前消息 %s: %s\n", speaker, text)
 			continue
@@ -165,9 +185,24 @@ func (s *AIChatService) buildGroupChatContext(chatRoomID string, currentID int64
 	return sb.String()
 }
 
-func transcriptSpeaker(msg *model.Message) string {
+func (s *AIChatService) robotSpeakerLabel() string {
+	if room, ok := s.config.(*ChatRoomSettingsService); ok {
+		if name := strings.TrimSpace(room.primaryRobotName()); name != "" {
+			return name
+		}
+	}
+	if name := strings.TrimSpace(cachedRobotNickname(s.ctx)); name != "" {
+		return name
+	}
+	return "我"
+}
+
+func transcriptSpeaker(msg *model.Message, robotLabel string) string {
 	if wxid := vars.RobotRuntime.WxID; wxid != "" && msg.SenderWxID == wxid {
-		return "小机"
+		if robotLabel == "" {
+			return "我"
+		}
+		return robotLabel
 	}
 	if msg.SenderNickname != "" {
 		return msg.SenderNickname
